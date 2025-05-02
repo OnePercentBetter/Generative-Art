@@ -12,10 +12,14 @@ export function AnimatedBackground() {
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
+    // Define a safe reference to canvas and ctx that TypeScript knows are not null
+    const safeCanvas = canvas
+    const safeCtx = ctx
+
     // Set canvas dimensions
     const resizeCanvas = () => {
-      canvas.width = window.innerWidth
-      canvas.height = window.innerHeight
+      safeCanvas.width = window.innerWidth
+      safeCanvas.height = window.innerHeight
     }
 
     resizeCanvas()
@@ -34,8 +38,8 @@ export function AnimatedBackground() {
       color: string
 
       constructor() {
-        this.x = Math.random() * canvas.width
-        this.y = Math.random() * canvas.height
+        this.x = Math.random() * safeCanvas.width
+        this.y = Math.random() * safeCanvas.height
         this.size = Math.random() * 5 + 1
         this.speedX = Math.random() * 3 - 1.5
         this.speedY = Math.random() * 3 - 1.5
@@ -49,7 +53,8 @@ export function AnimatedBackground() {
           "rgba(50, 205, 50, 0.7)", // Lime green
           "rgba(255, 165, 0, 0.7)", // Orange
         ]
-        this.color = colors[Math.floor(Math.random() * colors.length)]
+        const colorIndex = Math.floor(Math.random() * colors.length)
+        this.color = colors[colorIndex] ?? "rgba(255, 105, 180, 0.7)"
       }
 
       update() {
@@ -57,19 +62,19 @@ export function AnimatedBackground() {
         this.y += this.speedY
 
         // Bounce off edges
-        if (this.x > canvas.width || this.x < 0) {
+        if (this.x > safeCanvas.width || this.x < 0) {
           this.speedX = -this.speedX
         }
-        if (this.y > canvas.height || this.y < 0) {
+        if (this.y > safeCanvas.height || this.y < 0) {
           this.speedY = -this.speedY
         }
       }
 
       draw() {
-        ctx.fillStyle = this.color
-        ctx.beginPath()
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2)
-        ctx.fill()
+        safeCtx.fillStyle = this.color
+        safeCtx.beginPath()
+        safeCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2)
+        safeCtx.fill()
       }
     }
 
@@ -82,15 +87,18 @@ export function AnimatedBackground() {
     init()
 
     const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      safeCtx.clearRect(0, 0, safeCanvas.width, safeCanvas.height)
 
       // Add a semi-transparent layer to create trail effect
-      ctx.fillStyle = "rgba(0, 0, 0, 0.02)"
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      safeCtx.fillStyle = "rgba(0, 0, 0, 0.02)"
+      safeCtx.fillRect(0, 0, safeCanvas.width, safeCanvas.height)
 
       for (let i = 0; i < particlesArray.length; i++) {
-        particlesArray[i].update()
-        particlesArray[i].draw()
+        const particle = particlesArray[i]
+        if (particle) {
+          particle.update()
+          particle.draw()
+        }
       }
 
       requestAnimationFrame(animate)

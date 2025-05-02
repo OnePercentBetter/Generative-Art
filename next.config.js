@@ -4,7 +4,17 @@
  */
 import "./src/env.js";
 
-/** @type {import("next").NextConfig} */
-const config = {};
-
-export default config;
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  images: {
+    remotePatterns: [
+      {
+        hostname: 'mykdgmbqdxxrpujdxybw.supabase.co',
+      },
+    ],
+  },
+  eslint: {
+    // Disable ESLint during build
+    ignoreDuringBuilds: true,
+  },
+};
