@@ -22,7 +22,8 @@
     "lint:fix": "next lint --fix",
     "preview": "next build && next start",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf .next && rm -rf node_modules && rm -rf bun.lockb"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.12.2",
@@ -66,7 +67,7 @@
     "react-three": "^0.9.7",
     "server-only": "^0.0.1",
     "sonner": "^2.0.1",
-    "supabase": "^2.15.8",
+    "supabase": ">=1.8.1",
     "supabase-cli": "^0.0.21",
     "superjson": "^2.2.1",
     "tailwind-merge": "^3.0.2",

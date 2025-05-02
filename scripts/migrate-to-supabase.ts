@@ -1,128 +1,98 @@
-import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
-import { gameImages } from "../src/server/db/schema";
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
 import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
+import path from 'path';
 
-// Get the directory name
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Supabase setup - use service role key for admin operations
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!; // Important: use service role key
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Supabase credentials
-const supabaseUrl = 'https://mykdgmbqdxxrpujdxybw.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im15a2RnbWJxZHh4cnB1amR4eWJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyMDE2NjIsImV4cCI6MjA1Njc3NzY2Mn0.hVwrdXFUidHBpHWWlcoJdlRhUbrWXiOcGAydg_gHib4';
+const BUCKET_NAME = 'prompt-game';
+const FOLDER_PATH = 'puns';
+const LOCAL_IMAGES_DIR = path.join(process.cwd(), 'public', 'game-images', 'puns');
 
-async function migrateToSupabase() {
-  console.log('🚀 Starting migration to Supabase...');
-
-  // 1. Connect to local database
-  const localConnectionString = "postgres://sal:password@localhost:5432/generative-art";
-  const localClient = postgres(localConnectionString, {
-    ssl: false
-  });
-  const localDb = drizzle(localClient, { schema: { gameImages } });
-
-  // 2. Connect to Supabase
-  const supabaseConnectionString = "postgresql://postgres.mykdgmbqdxxrpujdxybw:promptgame!!@aws-0-us-east-1.pooler.supabase.com:6543/postgres";
-  const supabaseClient = postgres(supabaseConnectionString, {
-    ssl: {
-      rejectUnauthorized: false
-    }
-  });
-  const supabaseDb = drizzle(supabaseClient, { schema: { gameImages } });
-
-  // 3. Initialize Supabase client for storage
-  const supabase = createClient(supabaseUrl, supabaseKey);
+async function updateDatabaseUrls() {
+  console.log('🚀 Starting database URL updates using Supabase client...');
 
   try {
-    // 4. Fetch all game images from local database
-    console.log('📊 Fetching game images from local database...');
-    const localGameImages = await localDb.select().from(gameImages);
-    console.log(`✅ Found ${localGameImages.length} game images in local database`);
-
-    // 5. Clear existing game images in Supabase
-    console.log('🧹 Clearing existing game images in Supabase...');
-    await supabaseDb.delete(gameImages);
-    console.log('✅ Cleared existing game images in Supabase');
-
-    // 6. Insert game images into Supabase database and upload files
-    console.log('📤 Inserting game images into Supabase...');
+    // Get image files
+    const imageFiles = fs.readdirSync(LOCAL_IMAGES_DIR)
+      .filter(file => file.match(/\.(png|jpg|jpeg|gif)$/i));
+      
+    console.log(`Found ${imageFiles.length} local image files`);
     
-    // First, ensure the storage bucket exists
-    console.log('🪣 Checking if storage bucket exists...');
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const bucketName = 'game-images';
-    
-    if (!buckets?.find(bucket => bucket.name === bucketName)) {
-      console.log(`🪣 Creating bucket "${bucketName}"...`);
-      await supabase.storage.createBucket(bucketName, {
-        public: true
-      });
-      console.log(`✅ Created bucket "${bucketName}"`);
+    // Fetch all records from the database table
+    const { data: allImages, error } = await supabase
+      .from('generative-art_game_image')  // Use the actual table name
+      .select('*');
+      
+    if (error) {
+      console.error('Error fetching images:', error);
+      return;
     }
     
-    // Process each image
-    for (const image of localGameImages) {
-      // Get the filename from the path
-      const filename = path.basename(image.imagePath);
-      const localImagePath = path.join(__dirname, '../public', image.imagePath);
-      
-      // Check if the file exists locally
-      if (fs.existsSync(localImagePath)) {
-        // Read the file
-        const fileBuffer = fs.readFileSync(localImagePath);
+    console.log(`Found ${allImages.length} records in database`);
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const file of imageFiles) {
+      try {
+        // Get base filename without extension
+        const fileBase = path.parse(file).name; // e.g., "cat_nap" from "cat_nap.png"
         
-        // Upload to Supabase Storage
-        console.log(`📤 Uploading ${filename} to Supabase Storage...`);
-        const folderPath = path.dirname(image.imagePath).replace(/^\//, '');
-        const uploadPath = `${folderPath}/${filename}`;
+        // Find the corresponding record
+        const matchingRecord = allImages.find(img => {
+          const oldPath = img.image_path;
+          return oldPath.includes(fileBase);
+        });
         
-        const { error } = await supabase.storage
-          .from(bucketName)
-          .upload(uploadPath, fileBuffer, {
-            contentType: 'image/png',
-            upsert: true
-          });
-        
-        if (error) {
-          console.error(`❌ Error uploading ${filename}:`, error);
+        if (!matchingRecord) {
+          console.warn(`⚠️ No database record found for image: ${file}`);
+          failCount++;
           continue;
         }
         
-        console.log(`✅ Uploaded ${filename} to Supabase Storage`);
-      } else {
-        console.warn(`⚠️ Local image not found: ${localImagePath}`);
+        // Construct the new Supabase URL
+        const newUrl = `${supabaseUrl}/storage/v1/object/public/${BUCKET_NAME}/${FOLDER_PATH}/${file}`;
+        
+        console.log(`Updating record ID ${matchingRecord.id}:`);
+        console.log(`  Old path: ${matchingRecord.image_path}`);
+        console.log(`  New URL: ${newUrl}`);
+        
+        // Update the database record using Supabase client
+        const { error: updateError } = await supabase
+          .from('generative-art_game_image')  // Use the actual table name
+          .update({ image_path: newUrl })
+          .eq('id', matchingRecord.id);
+        
+        if (updateError) {
+          console.error(`❌ Error updating record ID ${matchingRecord.id}:`, updateError);
+          failCount++;
+          continue;
+        }
+        
+        console.log(`✅ Updated record ID ${matchingRecord.id}`);
+        successCount++;
+      } catch (error) {
+        console.error(`❌ Error processing file ${file}:`, error);
+        failCount++;
       }
-      
-      // Add the image entry to the database
-      await supabaseDb.insert(gameImages).values({
-        imagePath: image.imagePath,
-        originalPrompt: image.originalPrompt,
-        targetWords: image.targetWords,
-        difficulty: image.difficulty,
-        active: image.active
-      });
-      
-      console.log(`✅ Added "${filename}" to Supabase database`);
     }
 
-    console.log('\n🎉 Migration to Supabase completed successfully!');
-    console.log('\nAll image data and files have been migrated to Supabase.');
-    console.log('You can access the images via:');
-    console.log(`${supabaseUrl}/storage/v1/object/public/${bucketName}/game-images/puns/[filename]`);
-
+    console.log('\n🏁 Update Summary:');
+    console.log(`✅ Successfully updated: ${successCount}`);
+    console.log(`❌ Failed to update: ${failCount}`);
   } catch (error) {
-    console.error('❌ Error during migration:', error);
-  } finally {
-    // 7. Close connections
-    await localClient.end();
-    await supabaseClient.end();
-    process.exit(0);
+    console.error('Error during update process:', error);
   }
 }
 
-// Run the migration
-migrateToSupabase(); 
+// Execute the update
+updateDatabaseUrls()
+  .catch(error => {
+    console.error('Unhandled error during update:', error);
+  })
+  .finally(() => {
+    console.log('Update process completed');
+  });
