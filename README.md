@@ -1,6 +1,10 @@
 # Create T3 App
 
+![Application Screenshot](public/landing.png)
+
 This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3-app`.
+
+This T3 stack application is a prompt guessing game. It uses AI-generated images (created via DALL-E 2 and stored locally) as the target, and players try to guess the prompt that generated the image. It utilizes Next.js for the frontend, tRPC for the API, Drizzle ORM for database interactions (potentially with Supabase), Tailwind CSS for styling, and NextAuth.js for authentication.
 
 ## What's next? How do I make an app with this?
 
